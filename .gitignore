@@ -1,0 +1,14 @@
+# Python 运行缓存
+__pycache__/
+*.pyc
+
+# 玩家个人存档（金币等），不入库
+tank_coins.json
+
+# 运行时下载的便携 Python 环境
+runtime/
+python_embed.zip
+get-pip.py
+
+# 发布工具（便携 Git，不属于游戏本体）
+.tools/
