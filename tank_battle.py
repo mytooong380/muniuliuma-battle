@@ -33,6 +33,7 @@
           assets/ 目录（player_ox.jpg / enemy_horse.jpg，缺失回退矢量绘制）
 """
 import array
+import asyncio                 # WASM 网页版必需：主循环让出事件循环；桌面版无感
 import base64
 import heapq
 import io
@@ -50934,17 +50935,35 @@ ORDER_LOG = []            # 订单流水：滚动保留最近 50 单
 SHOP_MSG = ("", 0)        # 购买反馈 (文案, 截止时刻毫秒)
 
 
+def _web_storage():
+    """浏览器环境探测：网页版返回 localStorage（金币跨会话持久），桌面返回 None"""
+    try:
+        import js                       # 仅 WASM 环境存在此模块
+        return js.localStorage
+    except Exception:
+        return None
+
+
 def load_profile():
     """读档：兼容旧版纯金币档，缺字段补默认，损坏从零开始"""
     global PLAYER_STOCK, PLAYER_ITEMS, ORDER_LOG
-    try:
-        with open(COIN_SAVE, encoding="utf-8") as f:
-            data = json.load(f)
-    except FileNotFoundError:
-        data = {}
-    except Exception as e:
-        LOG.warning("存档读取失败, 从零开始: %s", e)
-        data = {}
+    storage = _web_storage()
+    if storage is not None:             # 网页版：localStorage 读档
+        try:
+            raw = storage.getItem("tank_coins")
+            data = json.loads(raw) if raw else {}
+        except Exception as e:
+            LOG.warning("网页存档读取失败, 从零开始: %s", e)
+            data = {}
+    else:                               # 桌面版：本地文件读档
+        try:
+            with open(COIN_SAVE, encoding="utf-8") as f:
+                data = json.load(f)
+        except FileNotFoundError:
+            data = {}
+        except Exception as e:
+            LOG.warning("存档读取失败, 从零开始: %s", e)
+            data = {}
     WALLET.coins = max(0, int(data.get("coins", 0)))
     stock = data.get("stock", {})
     PLAYER_STOCK = {it["id"]: int(stock.get(it["id"], it["stock"]))
@@ -50956,11 +50975,19 @@ def load_profile():
 
 def save_profile():
     """落盘：金币/库存/背包/订单一并持久化，写失败仅告警"""
-    try:
+    payload = {"coins": WALLET.coins, "stock": PLAYER_STOCK,
+               "owned": PLAYER_ITEMS, "orders": ORDER_LOG[-50:]}
+    storage = _web_storage()
+    if storage is not None:             # 网页版：localStorage 落档
+        try:
+            storage.setItem("tank_coins",
+                            json.dumps(payload, ensure_ascii=False))
+        except Exception as e:
+            LOG.warning("网页存档写入失败: %s", e)
+        return
+    try:                                # 桌面版：本地文件落档
         with open(COIN_SAVE, "w", encoding="utf-8") as f:
-            json.dump({"coins": WALLET.coins, "stock": PLAYER_STOCK,
-                       "owned": PLAYER_ITEMS, "orders": ORDER_LOG[-50:]}, f,
-                      ensure_ascii=False)
+            json.dump(payload, f, ensure_ascii=False)
     except Exception as e:
         LOG.warning("存档写入失败: %s", e)
 
@@ -51277,6 +51304,18 @@ def setup_logging():
                         datefmt="%H:%M:%S")
 
 
+def load_cjk_font(size):
+    """优先用内置字体：浏览器 WASM 无系统字体库，中文缺字会渲染成方块"""
+    path = os.path.join(ASSET_DIR, "cjk_font.ttf")
+    if os.path.exists(path):
+        try:
+            logging.info("font: bundled cjk font size=%d", size)
+            return pygame.font.Font(path, size)
+        except Exception as exc:          # 文件损坏等异常：回退系统字体
+            logging.warning("font: bundled load failed (%s), fallback", exc)
+    return pygame.font.SysFont("microsoftyahei,msyh,simhei", size)
+
+
 def init_game():
     """集中初始化显示/字体/音效/底图，各环节失败各自降级"""
     pygame.mixer.pre_init(22050, -16, 1, 256)   # 音效格式：合成波形需与之匹配
@@ -51284,11 +51323,11 @@ def init_game():
     screen = pygame.display.set_mode((SCREEN_W, SCREEN_H))
     pygame.display.set_caption("木牛流马大战 (YXF)")
     clock = pygame.time.Clock()
-    font = pygame.font.SysFont("microsoftyahei,msyh,simhei", 13)  # 中文面板
-    big_font = pygame.font.SysFont(None, 84)
-    win_font = pygame.font.SysFont("microsoftyahei,msyh,simhei", 48)  # 中文结算大字
-    title_font = pygame.font.SysFont("microsoftyahei,msyh,simhei", 72)  # 菜单大标题
-    menu_font = pygame.font.SysFont("microsoftyahei,msyh,simhei", 28)   # 菜单按钮/说明页
+    font = load_cjk_font(13)  # 中文面板
+    big_font = load_cjk_font(84)
+    win_font = load_cjk_font(48)  # 中文结算大字
+    title_font = load_cjk_font(72)  # 菜单大标题
+    menu_font = load_cjk_font(28)   # 菜单按钮/说明页
     flash_surf = pygame.Surface((SCREEN_W, SCREEN_H))
     flash_surf.fill((255, 0, 0))
     init_sounds()
@@ -51327,7 +51366,7 @@ def init_round(level=0, score=0, use_items=True):
     return grid, player, ais, Effects(mode, level, score)
 
 
-def main():
+async def main():
     setup_logging()
     load_profile()                        # 读档：金币/库存/订单一并恢复
     LOG.info("YXF | 木牛流马大战启动 (金币 %d)", WALLET.coins)
@@ -51337,6 +51376,7 @@ def main():
     state, menu_sel, shop_sel = "MENU", 0, 0
     grid, player, ais, fx = init_round(use_items=False)   # 预备战场防渲染空引用
     while True:
+        await asyncio.sleep(0)          # 帧首让出：WASM 网页版必需（continue 路径全覆盖），桌面无感
         dt = clock.tick(FPS) / 1000.0      # 稳定 60 FPS
         if state == "SHOP":
             quit_game, back, shop_sel = shop_turn(shop_sel)
@@ -51399,4 +51439,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())                 # 桌面/网页统一异步入口：pygbag 识别 asyncio.run 启动 WASM
