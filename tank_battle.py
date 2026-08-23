@@ -49687,7 +49687,11 @@ class Tank:
             return
         cx, cy = self.center()
         d = TURRET_DIRS[self.turret]         # 出膛向量随炮塔档位（8 向）
-        BULLETS.append(Bullet(self, cx + d[0] * 22, cy + d[1] * 22, d))
+        # 出膛距离按最大轴向归一：斜向也保证每轴偏移 22px，
+        # 否则 22×0.707≈15.6 < 自身半宽 16，出膛即重叠 → 斜射自杀（每轴需 >16+4）
+        m = max(abs(d[0]), abs(d[1]))
+        dist = 22 / m if m else 22.0
+        BULLETS.append(Bullet(self, cx + d[0] * dist, cy + d[1] * dist, d))
         self.fire_cd = self.COOLDOWN
         play_sound("shoot")
 
@@ -51259,9 +51263,10 @@ def skill_barrage(player, grid, ais, fx):
     base = player.turret * 45
     for k in (-3, -2, -1, 0, 1, 2, 3):
         rad = math.radians(base + k * 15)
-        BULLETS.append(Bullet(player, cx + math.cos(rad) * 22,
-                              cy + math.sin(rad) * 22,
-                              (math.cos(rad), math.sin(rad))))
+        dx, dy = math.cos(rad), math.sin(rad)
+        m = max(abs(dx), abs(dy))           # 出膛距离轴向归一：斜向弹不撞自身（同 try_fire）
+        dist = 22 / m if m else 22.0
+        BULLETS.append(Bullet(player, cx + dx * dist, cy + dy * dist, (dx, dy)))
     play_sound("shoot")
 
 
