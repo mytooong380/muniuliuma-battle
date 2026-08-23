@@ -49922,6 +49922,7 @@ class Effects:
         self.finale_n = 0        # 余爆轮数上限：三轮后归于死寂
         self.pending_music = None  # 待接力曲目 (剩余秒, 音量, 播曲函数)
         self.coin_gain = 0         # 战败结算兑出的金币数（ELOSE 画面展示用）
+        self.gear_toast = ("", 0.0)  # 补给生效提示 (文案, 剩余秒)
 
 
 # ---------------- 音效：纯代码合成 PCM 波形，零外部文件 ----------------
@@ -50456,11 +50457,38 @@ def draw_panel(screen, text, font, y, right=False, color=(255, 255, 255)):
     screen.blit(font.render(text, True, color), (x + 8, y + 4))
 
 
+def draw_skill_bar(screen, font):
+    """技能栏（参考 _drawSkillBar）：底部圆形图标 + 冷却扇形 + 就绪高亮 + F 键提示"""
+    unlocked = [cfg for cfg in SKILLS if cfg["id"] in PLAYER_SKILLS]
+    if not unlocked:
+        return
+    y = SCREEN_H - 64
+    cx = SCREEN_W // 2 - (len(unlocked) - 1) * 46
+    for i, cfg in enumerate(unlocked):
+        st = PLAYER_SKILLS[cfg["id"]]
+        x = cx + i * 92
+        ready = st["cd"] <= 0
+        deny = pygame.time.get_ticks() - _SKILL_DENY["ts"] < 200
+        color = ACCENT if ready else (226, 90, 80) if deny else GRAY_TXT
+        pygame.draw.circle(screen, (26, 32, 48), (x, y), 27)
+        pygame.draw.circle(screen, color, (x, y), 27, 2)
+        if not ready:                      # 冷却弧线：剩余比例的顺时针进度环
+            frac = st["cd"] / cfg["cd"]
+            pygame.draw.arc(screen, (226, 90, 80), (x - 24, y - 24, 48, 48),
+                            -math.pi / 2, -math.pi / 2 + math.pi * 2 * frac, 4)
+        icon = ui_font(22).render(cfg["name"][0], True,
+                                  TEXT_MAIN if ready else GRAY_TXT)
+        screen.blit(icon, icon.get_rect(center=(x, y - 2)))
+        cd_txt = "就绪" if ready else f"{st['cd']:.0f}s"
+        tip = ui_font(13).render(cd_txt, True, ACCENT if ready else GRAY_TXT)
+        screen.blit(tip, tip.get_rect(center=(x, y + 40)))
+
+
 def draw_hud(screen, font, player, ais, fx):
     # 左上角：题目指定文案的操作说明 + YXF 身份标识（加分项3）+ 炮塔旋转提示
     draw_panel(screen, "操作说明：方向键移动，空格发射", font, 6)
-    screen.blit(font.render("YXF", True, (255, 210, 60)), (8, 30))
-    draw_panel(screen, "Q/E 旋转炮塔（8 向）", font, 52)
+    screen.blit(font.render("YXF", True, ACCENT), (8, 30))
+    draw_panel(screen, "Q/E 旋转炮塔（8 向）· F 技能", font, 52)
     nuke_state = "已用" if fx.nuke_used else "待命"
     draw_panel(screen, f"Shift×2 核弹 [{nuke_state}]", font, 74)
     if fx.mode == "endless":
@@ -50473,6 +50501,7 @@ def draw_hud(screen, font, player, ais, fx):
                color=GOLD)
     if fx.mode == "endless":               # 金币归入右侧数据卡组：战利品语义
         draw_panel(screen, f"金币 {WALLET.coins}", font, 54, right=True, color=GOLD)
+    draw_skill_bar(screen, font)
 
 
 def center_text(screen, font, text, color, y=None):
@@ -50548,20 +50577,23 @@ def render(screen, bg, grid, player, ais, fx, font, big_font, win_font,
         pygame.draw.circle(screen, (255, 170, 60), pos,
                            max(1, int((6 + 26 * k) * VIEW_SCALE)))
     draw_hud(screen, font, player, ais, fx)
+    msg, ttl = fx.gear_toast              # 补给生效横幅：开局 3 秒金色置顶
+    if ttl > 0:
+        center_text(screen, ui_font(22), msg, GOLD, 128)
     if fx.flash > 0:
         flash_surf.set_alpha(min(255, int(130 * fx.flash / 0.35)))
         screen.blit(flash_surf, (0, 0))
     if state in ("WIN", "LOSE", "CLEAR", "ELOSE"):
         draw_result_veil(screen)
     if state == "WIN":
-        center_text(screen, big_font, "旗开得胜！", GOLD, 340)
+        center_text(screen, big_font, "旗开得胜！", TEXT_SUCCESS, 340)
         draw_finale_divider(screen, 386)
         center_text(screen, menu_font, "真是一场酣畅淋漓的战斗啊",
                     TEXT_MAIN, 424)
     elif state == "WIN_NUKE":
         draw_nuke_finale(screen, win_font, menu_font)
     elif state == "LOSE":
-        center_text(screen, big_font, "五丈原归天……", (230, 60, 60), 340)
+        center_text(screen, big_font, "五丈原归天……", TEXT_WARN, 340)
         draw_finale_divider(screen, 386)
     elif state == "CLEAR":
         center_text(screen, big_font, f"第 {fx.level} 关 完成！", GOLD, 340)
@@ -50573,7 +50605,7 @@ def render(screen, bg, grid, player, ais, fx, font, big_font, win_font,
                         f"核弹惩罚 -{NUKE_PENALTY} · 当前积分 {fx.score}",
                         TEXT_WARN, 462)
     elif state == "ELOSE":
-        center_text(screen, win_font, f"无尽模式 · 止步第 {fx.level} 关", (230, 60, 60), 340)
+        center_text(screen, win_font, f"无尽模式 · 止步第 {fx.level} 关", TEXT_WARN, 340)
         draw_finale_divider(screen, 386)
         center_text(screen, menu_font, "《关羽之歌》已为您奏响    ESC - 返回主菜单",
                     TEXT_MAIN, 424)
@@ -50588,21 +50620,25 @@ def render(screen, bg, grid, player, ais, fx, font, big_font, win_font,
 
 
 # ---------------- 主菜单与操作说明 ----------------
-# 军绿战术色板：橄榄深底 + 卡其军黄 + 暗棕硬影（迷彩军械风）
+# 参考配色（坦克大战 新）：深蓝底 + 蓝紫渐变 + 玻璃拟态
 # 对比度经 WCAG 公式验证全部 ≥4.5:1，禁止肉眼调色后不再复算
-BG_DARK = (18, 22, 15)           # 主底：橄榄深
-BG_PANEL = (24, 30, 20)          # 面板底板
-GOLD = (232, 204, 112)           # 主金 7.1:1（原 214,187,98 提亮）
-GOLD_DIM = (180, 152, 78)        # 暗金：边框/分割线
-RED_ACCENT = (82, 66, 38)        # 复古硬阴影
-GRAY_TXT = (168, 176, 148)       # 副文字 5.8:1（原 136,142,122 提亮）
-TEXT_MAIN = (226, 232, 214)      # 主文字 8.3:1
-TEXT_WARN = (236, 110, 84)       # 警示/售罄/失败
-TEXT_SUCCESS = (146, 210, 94)    # 购买成功
-BORDER_BASE = (62, 70, 54)       # 通用描边
-WOOD_DARK = (86, 64, 38)         # 深木色：木纹/牛角/木轮
-OX_BROWN = (150, 112, 62)        # 原木色：牛头/装饰
-MENU_BUTTONS = ("无尽模式", "普通模式", "军械商城", "操作说明")
+BG_DARK = (13, 16, 23)           # #0d1017 深海军蓝主底
+BG_PANEL = (16, 20, 30)          # rgba(16,20,30,.88) 玻璃面板底
+ACCENT = (126, 161, 255)         # #7ea1ff 渐变蓝端
+ACCENT2 = (180, 140, 242)        # #b48cf2 渐变紫端
+GOLD = (246, 201, 69)            # #f6c945 金色数字/价格
+GOLD_DIM = (180, 150, 60)        # 暗金：分割线
+RED_ACCENT = (30, 34, 48)        # 标题硬阴影（深蓝调）
+GRAY_TXT = (139, 149, 173)       # #8b95ad 次文字
+TEXT_MAIN = (232, 236, 244)      # #e8ecf4 主文字
+TEXT_WARN = (224, 106, 90)       # #e06a5a 警示/售罄/失败
+TEXT_SUCCESS = (111, 227, 165)   # #6fe3a5 购买成功/胜利
+BORDER_BASE = (70, 80, 110)      # rgba(120,140,200,.35) 加深描边
+BTN_BLUE = (61, 90, 254)         # #3d5afe 按钮渐变蓝端
+BTN_PURPLE = (124, 77, 255)      # #7c4dff 按钮渐变紫端
+WOOD_DARK = (86, 64, 38)         # 深木色：木纹/牛角/木轮（游戏实体沿用）
+OX_BROWN = (150, 112, 62)        # 原木色：牛头/装饰（游戏实体沿用）
+MENU_BUTTONS = ("普通模式", "无尽模式", "军械商城", "操作说明")
 
 _MENU_ANIM = {"sel": -1, "ts": 0}     # 菜单切换动画：选中项索引与切换时刻
 _SHOP_FLASH = {"ts": 0, "ok": False}  # 商城购买成功绿闪：100ms 即逝
@@ -50619,6 +50655,7 @@ def ui_font(size):
 HELP_LINES = (
     "移动：方向键 ↑↓←→ 或 WASD（整格步进）",
     "炮塔：Q / E 八向 45° 旋转      开火：空格",
+    "技能：F 释放已解锁技能（商城金币解锁）",
     "核弹：0.5 秒内连按两次 Shift（一局一次）",
     "地形：草坪内坦克隐身，AI 视线受阻",
     "传送门：同色成对互通，坦克子弹皆穿行",
@@ -50633,16 +50670,16 @@ HELP_LINES = (
     "          （积分不足则清零）",
     "          战败播《关羽之歌》，积分进位兑换金币",
     "          （1000 分=1 枚，千位进一保底 1 枚）",
-    "商城：金币购买无尽增益（军粮/装甲/祝福）",
-    "          仅无尽模式开局生效，换关不重复消耗",
+    "商城：技能卡=永久解锁（全模式 F 键释放）",
+    "          补给=无尽开局生效，换关不重复消耗",
     "任意键 / 点击 / ESC - 返回主菜单",
 )
 
 
 def menu_layout():
-    """四按钮几何：大点击区（可访问性），纵向等距居中"""
-    w, h = 340, 56
-    return [pygame.Rect(SCREEN_W // 2 - w // 2, 300 + i * 74, w, h)
+    """四按钮几何（参考 .btn 340 宽）：纵向等距居中"""
+    w, h = 340, 52
+    return [pygame.Rect(SCREEN_W // 2 - w // 2, 300 + i * 66, w, h)
             for i in range(len(MENU_BUTTONS))]
 
 
@@ -50657,6 +50694,57 @@ def retro_text(screen, font, text, color, shadow, center, offset=4):
     screen.blit(main, main.get_rect(center=center))
 
 
+def gradient_text(font, text, c1, c2):
+    """横向渐变字（参考 .title 135° 渐变的 pygame 近似）：mask 逐列混色"""
+    base = font.render(text, True, (255, 255, 255))
+    grad = pygame.Surface(base.get_size(), pygame.SRCALPHA)
+    w = max(1, base.get_width() - 1)
+    for x in range(base.get_width()):
+        t = x / w
+        col = tuple(int(a + (b - a) * t) for a, b in zip(c1, c2))
+        pygame.draw.line(grad, col, (x, 0), (x, base.get_height()))
+    grad.blit(base, (0, 0), special_flags=pygame.BLEND_MULT)
+    return grad
+
+
+def rounded_gradient(size, c1, c2, radius):
+    """垂直渐变圆角面（参考 .btn 135° 渐变）：mask 裁圆角"""
+    w, h = size
+    s = pygame.Surface((w, h), pygame.SRCALPHA)
+    for y in range(h):
+        t = y / max(1, h - 1)
+        col = tuple(int(a + (b - a) * t) for a, b in zip(c1, c2))
+        pygame.draw.line(s, col, (0, y), (w, y))
+    mask = pygame.Surface((w, h), pygame.SRCALPHA)
+    pygame.draw.rect(mask, (255, 255, 255, 255), mask.get_rect(),
+                     border_radius=radius)
+    s.blit(mask, (0, 0), special_flags=pygame.BLEND_RGBA_MIN)
+    return s
+
+
+def draw_glass_panel(screen, rect, radius=16):
+    """玻璃拟态面板（参考 .panel）：半透明深底 + 细亮边"""
+    s = pygame.Surface(rect.size, pygame.SRCALPHA)
+    s.fill((16, 20, 30, 224))
+    pygame.draw.rect(s, (120, 140, 200, 90), s.get_rect(), 1,
+                     border_radius=radius)
+    screen.blit(s, rect.topleft)
+
+
+def draw_grad_button(screen, rect, label, font, active):
+    """渐变大按钮（参考 .btn）：蓝紫渐变 + 悬停浮起 + 按下感"""
+    off = 3 if active and pygame.time.get_ticks() - _MENU_ANIM["ts"] < 120 else 0
+    r = rect.move(0, -2 if active else 0)   # 悬停上浮 2px（参考 translateY）
+    glow = pygame.Surface((r.w + 12, r.h + 12), pygame.SRCALPHA)
+    pygame.draw.rect(glow, (80, 100, 255, 70), glow.get_rect(),
+                     border_radius=16)
+    screen.blit(glow, (r.x - 6, r.y - 6 + off))
+    screen.blit(rounded_gradient(r.size, BTN_BLUE, BTN_PURPLE, 12),
+                (r.x, r.y + off))
+    text = font.render(label, True, (255, 255, 255))
+    screen.blit(text, text.get_rect(center=r.center).move(0, off))
+
+
 def draw_scanlines(screen):
     """CRT 扫描线：4px 周期横纹叠加复古质感"""
     global _SCANLINES
@@ -50668,11 +50756,11 @@ def draw_scanlines(screen):
 
 
 def draw_menu_grid(screen):
-    """低调网格底纹：给纯色背景加纵深，不抢主体"""
+    """低调网格底纹（深蓝调）：给纯色背景加纵深，不抢主体"""
     for x in range(0, SCREEN_W + 1, 64):
-        pygame.draw.line(screen, (26, 32, 21), (x, 0), (x, SCREEN_H))
+        pygame.draw.line(screen, (20, 25, 36), (x, 0), (x, SCREEN_H))
     for y in range(0, SCREEN_H + 1, 64):
-        pygame.draw.line(screen, (26, 32, 21), (0, y), (SCREEN_W, y))
+        pygame.draw.line(screen, (20, 25, 36), (0, y), (SCREEN_W, y))
 
 
 def draw_cursor(screen, x, y, color):
@@ -50701,70 +50789,34 @@ def draw_coin_counter(screen, font, y):
     screen.blit(surf, (cx + 16, y - surf.get_height() // 2))
 
 
-def draw_ox_icon(screen, x, y, body_color, horns, size=32):
-    """迷你木牛流马：菜单装饰用（木箱+牛头角+双轮）"""
-    b = size * 5 // 8
-    pygame.draw.rect(screen, WOOD_DARK, (x + 1, y + size - 6, 6, 5), border_radius=2)
-    pygame.draw.rect(screen, WOOD_DARK, (x + size - 7, y + size - 6, 6, 5),
-                     border_radius=2)
-    pygame.draw.rect(screen, body_color, (x + 4, y + size // 3, size - 8, b),
-                     border_radius=3)
-    hw = size // 4
-    pygame.draw.rect(screen, OX_BROWN, (x + size // 2 - hw // 2, y + 3, hw, size // 3),
-                     border_radius=2)
-    pygame.draw.polygon(screen, horns,
-                        [(x + size // 2 - hw, y + 8), (x + 2, y), (x + size // 2 - hw // 2, y + 4)])
-    pygame.draw.polygon(screen, horns,
-                        [(x + size // 2 + hw, y + 8), (x + size - 2, y), (x + size // 2 + hw // 2, y + 4)])
-
-
-def draw_menu_tanks(screen, font, y):
-    """底部对阵装饰：军绿木牛 VS 联军木马群，点明玩法"""
-    draw_ox_icon(screen, 296, y, (104, 130, 58), WOOD_DARK)
-    vs = font.render("VS", True, GOLD)
-    screen.blit(vs, vs.get_rect(center=(400, y + 12)))
-    for i in range(3):
-        draw_ox_icon(screen, 462 + i * 44, y, (158, 96, 62), (120, 40, 32))
-
-
 def draw_menu_item(screen, font, label, rect, active, idx):
-    """菜单项三级激活态：金色+大字号+光条；切换瞬间 120ms 微弹跳"""
+    """菜单按钮（参考 .btn）：渐变底 + 悬停上浮；切换瞬间 120ms 弹跳"""
     if active and _MENU_ANIM["sel"] != idx:
         _MENU_ANIM.update(sel=idx, ts=pygame.time.get_ticks())
-    text = ui_font(30).render(label, True, GOLD) if active else \
-        font.render(label, True, TEXT_MAIN)
-    tr = text.get_rect(center=rect.center)
-    if active:
-        box = tr.inflate(44, 12)
-        glow = pygame.Surface(box.size, pygame.SRCALPHA)
-        pygame.draw.rect(glow, (*GOLD_DIM, 42), glow.get_rect(), border_radius=6)
-        screen.blit(glow, box.topleft)
-        if pygame.time.get_ticks() - _MENU_ANIM["ts"] < 120:
-            tr = tr.move(1, -1)             # 弹跳：切换后的前几帧位移 1px
-    screen.blit(text, tr)
-    if active and int(pygame.time.get_ticks() / 280) % 2 == 0:
-        draw_cursor(screen, rect.left + 74, rect.centery, GOLD)
+    draw_grad_button(screen, rect, label, font, active)
 
 
 def draw_menu(screen, title_font, menu_font, menu_sel, mouse):
-    """主菜单：三级激活选项 + 新手引导行 + 网格扫描线质感"""
+    """主菜单（参考 menu.js）：渐变标题→状态行→渐变按钮→键位提示"""
     screen.fill(BG_DARK)
     draw_menu_grid(screen)
-    retro_text(screen, title_font, "木牛流马大战", GOLD, RED_ACCENT,
-               (SCREEN_W // 2, 172), 5)
+    title = gradient_text(title_font, "木牛流马大战", ACCENT, ACCENT2)
+    screen.blit(title, title.get_rect(center=(SCREEN_W // 2, 148)))
     sub = menu_font.render("WOODEN OX BATTLE · 迷宫围剿 · YXF 原创", True, GRAY_TXT)
-    screen.blit(sub, sub.get_rect(center=(SCREEN_W // 2, 236)))
-    pygame.draw.line(screen, BORDER_BASE, (220, 272), (580, 272), 1)
+    screen.blit(sub, sub.get_rect(center=(SCREEN_W // 2, 214)))
+    skills_n = len(PLAYER_SKILLS)
+    stat = f"金币 {WALLET.coins}          技能 {skills_n}/{len(SKILLS)}          补给 {sum(PLAYER_ITEMS.values())}"
+    stat_surf = menu_font.render(stat, True, TEXT_MAIN)
+    screen.blit(stat_surf, stat_surf.get_rect(center=(SCREEN_W // 2, 258)))
     for i, (rect, label) in enumerate(zip(menu_layout(), MENU_BUTTONS)):
         active = rect.collidepoint(mouse) or i == menu_sel
-        draw_menu_item(screen, menu_font, f"{i + 1}. {label}", rect, active, i)
-    draw_coin_counter(screen, menu_font, 604)
-    center_text(screen, menu_font, "↑↓ / W S 选择 · Enter 确认 · 数字键 1-4 · 鼠标点击",
-                GRAY_TXT, 644)
-    center_text(screen, ui_font(22),
-                "无尽模式赚金币 · 普通模式闯关 · 商城仅无尽生效 —— 新手建议从 2.普通模式开始",
-                GRAY_TXT, 668)
-    draw_menu_tanks(screen, menu_font, 700)
+        draw_menu_item(screen, ui_font(22), label, rect, active, i)
+    center_text(screen, ui_font(20),
+                "↑↓ / W S 选择 · Enter 确认 · 数字键 1-4 · 鼠标点击",
+                GRAY_TXT, 604)
+    center_text(screen, ui_font(18),
+                "普通模式闯关 · 无尽模式赚金币 · 商城解锁技能（F 键释放）",
+                GRAY_TXT, 636)
     draw_scanlines(screen)
 
 
@@ -50796,39 +50848,97 @@ def draw_help(screen, menu_font):
     draw_scanlines(screen)
 
 
+def skill_card_rects():
+    """技能卡几何（参考 .form-card 三联排）：210x150"""
+    return [pygame.Rect(55 + i * 240, 200, 210, 150)
+            for i in range(len(SKILLS))]
+
+
 def shop_rows():
-    """商品行几何：三行大点击区"""
-    return [pygame.Rect(90, 230 + i * 88, 620, 76)
+    """补给行几何：三行大点击区（技能区下方）"""
+    return [pygame.Rect(90, 414 + i * 72, 620, 64)
             for i in range(len(SHOP_ITEMS))]
 
 
+def shop_purchase(idx):
+    """统一购买入口：0-2 技能卡（永久解锁）/ 3-5 补给行（消耗品）"""
+    if idx < len(SKILLS):
+        return buy_skill(idx)
+    return try_purchase(idx - len(SKILLS))
+
+
+def shop_hit(pos):
+    """命中检测：返回 (区索引, rect)；未命中 (None, None)"""
+    for i, rect in enumerate(skill_card_rects()):
+        if rect.collidepoint(pos):
+            return i, rect
+    for i, rect in enumerate(shop_rows()):
+        if rect.collidepoint(pos):
+            return i + len(SKILLS), rect
+    return None, None
+
+
+def draw_skill_card(screen, cfg, rect, active):
+    """技能卡（参考 .form-card）：圆形图标 + 名称 + 描述 + 价格/已解锁"""
+    owned = cfg["id"] in PLAYER_SKILLS
+    card = pygame.Surface(rect.size, pygame.SRCALPHA)
+    card.fill((255, 255, 255, 13 if active else 8))
+    screen.blit(card, rect.topleft)
+    border = ACCENT if active and not owned else \
+        TEXT_SUCCESS if owned else BORDER_BASE
+    pygame.draw.rect(screen, border, rect, 2, border_radius=14)
+    cx = rect.centerx
+    pygame.draw.circle(screen, (26, 32, 48), (cx, rect.top + 38), 24)
+    pygame.draw.circle(screen, ACCENT if not owned else TEXT_SUCCESS,
+                       (cx, rect.top + 38), 24, 2)
+    icon = ui_font(24).render(cfg["name"][0], True, TEXT_MAIN)
+    screen.blit(icon, icon.get_rect(center=(cx, rect.top + 38)))
+    name = ui_font(20).render(cfg["name"], True, TEXT_MAIN)
+    screen.blit(name, name.get_rect(center=(cx, rect.top + 76)))
+    desc = ui_font(14).render(cfg["desc"][:12], True, GRAY_TXT)
+    screen.blit(desc, desc.get_rect(center=(cx, rect.top + 102)))
+    desc2 = ui_font(14).render(cfg["desc"][12:], True, GRAY_TXT)
+    screen.blit(desc2, desc2.get_rect(center=(cx, rect.top + 120)))
+    foot = "✓ 已解锁" if owned else f"{cfg['price']} 币"
+    foot_surf = ui_font(17).render(foot, True,
+                                  TEXT_SUCCESS if owned else GOLD)
+    screen.blit(foot_surf, foot_surf.get_rect(center=(cx, rect.bottom - 16)))
+
+
 def draw_shop(screen, title_font, menu_font, sel, mouse):
-    """商城界面：商品/价格/库存/已购 + 余额 + 购买反馈 + 最近订单"""
+    """商城（参考 menu.js）：渐变标题 → 技能卡区 → 补给区 → 订单/操作提示"""
     screen.fill(BG_DARK)
     draw_menu_grid(screen)
-    retro_text(screen, title_font, "军械商城", GOLD, RED_ACCENT,
-               (SCREEN_W // 2, 96), 5)
-    draw_coin_counter(screen, menu_font, 166)
+    title = gradient_text(title_font, "军械商城", ACCENT, ACCENT2)
+    screen.blit(title, title.get_rect(center=(SCREEN_W // 2, 76)))
+    draw_coin_counter(screen, menu_font, 148)
+    center_text(screen, ui_font(16), "主 动 技 能 · F 键 释 放 · 永 久 解 锁",
+                GRAY_TXT, 182)
+    for i, (cfg, rect) in enumerate(zip(SKILLS, skill_card_rects())):
+        draw_skill_card(screen, cfg, rect, rect.collidepoint(mouse) or i == sel)
+    center_text(screen, ui_font(16), "无 尽 补 给 · 开 局 生 效",
+                GRAY_TXT, 388)
     for i, (item, rect) in enumerate(zip(SHOP_ITEMS, shop_rows())):
         draw_shop_row(screen, menu_font, item, rect,
-                     active=rect.collidepoint(mouse) or i == sel)
-        if i == sel:
-            draw_cursor(screen, rect.left + 8, rect.centery, GOLD)
+                      active=rect.collidepoint(mouse) or i + len(SKILLS) == sel)
+        if i + len(SKILLS) == sel:
+            draw_cursor(screen, rect.left + 8, rect.centery, ACCENT)
     msg, until = SHOP_MSG
     if msg and pygame.time.get_ticks() < until:
         ok = msg.startswith("购买成功")
-        center_text(screen, menu_font, msg,
-                    TEXT_SUCCESS if ok else TEXT_WARN, 540)
+        center_text(screen, ui_font(20), msg,
+                    TEXT_SUCCESS if ok else TEXT_WARN, 648)
     if ORDER_LOG:
         last = ORDER_LOG[-1]
-        center_text(screen, menu_font,
+        center_text(screen, ui_font(15),
                     f"最近订单 #{last['id']} · {last['item']} · -{last['price']} 币 · {last['time']}",
-                    GRAY_TXT, 584)
-    center_text(screen, menu_font,
-                "↑↓ 选择 · Enter 购买 · 同一行点击两次确认 · ESC 返回主菜单",
-                GRAY_TXT, 726)
-    center_text(screen, menu_font, "※ 补给仅对无尽模式生效，普通模式无效",
-                GOLD_DIM, 758)
+                    GRAY_TXT, 682)
+    center_text(screen, ui_font(16),
+                "↑↓←→ 选择 · Enter 购买 · 数字键 1-6 · 同一目标点击两次 · ESC 返回",
+                GRAY_TXT, 718)
+    center_text(screen, ui_font(15),
+                "※ 技能全模式可用 · 补给仅无尽模式生效",
+                GOLD_DIM, 748)
     if _SHOP_FLASH["ok"] and pygame.time.get_ticks() - _SHOP_FLASH["ts"] < 100:
         veil = pygame.Surface((SCREEN_W, SCREEN_H), pygame.SRCALPHA)
         veil.fill((*TEXT_SUCCESS, 35))       # 成功绿闪 100ms：肌肉记忆绑定
@@ -50838,10 +50948,10 @@ def draw_shop(screen, title_font, menu_font, sel, mouse):
 
 def draw_shop_icon(screen, font, item, rect, active):
     """商品图标：48px 圆角块内单字，军械库货架感"""
-    box = pygame.Rect(rect.left + 14, rect.top + 14, 48, 48)
-    pygame.draw.rect(screen, BG_PANEL if active else (20, 24, 16),
+    box = pygame.Rect(rect.left + 10, rect.top + 8, 48, 48)
+    pygame.draw.rect(screen, BG_PANEL if active else (20, 24, 34),
                      box, border_radius=8)
-    pygame.draw.rect(screen, GOLD_DIM if active else BORDER_BASE, box, 2,
+    pygame.draw.rect(screen, ACCENT if active else BORDER_BASE, box, 2,
                      border_radius=8)
     ch = font.render(item["name"][0], True, GOLD if active else TEXT_MAIN)
     screen.blit(ch, ch.get_rect(center=box.center))
@@ -50860,59 +50970,58 @@ def draw_sold_veil(screen, rect):
 def draw_shop_row(screen, menu_font, item, rect, active):
     """单件商品行：图标 + 名称/价格/库存三列固定锚点（互不重叠）"""
     sold = PLAYER_STOCK.get(item["id"], 0) <= 0
-    pygame.draw.rect(screen, BG_PANEL if active else (24, 28, 19),
+    pygame.draw.rect(screen, BG_PANEL if active else (20, 24, 34),
                      rect, border_radius=10)
-    pygame.draw.rect(screen, GOLD_DIM if active else BORDER_BASE, rect, 2,
+    pygame.draw.rect(screen, ACCENT if active else BORDER_BASE, rect, 2,
                      border_radius=10)
     x0 = draw_shop_icon(screen, menu_font, item, rect, active)
     name_color = GRAY_TXT if sold else TEXT_MAIN
-    screen.blit(menu_font.render(item["name"], True, name_color), (x0, rect.top + 8))
+    screen.blit(menu_font.render(item["name"], True, name_color), (x0, rect.top + 6))
     price = menu_font.render(f"{item['price']} 币", True,
                              GRAY_TXT if sold else GOLD)
-    screen.blit(price, (rect.right - 230, rect.top + 8))
+    screen.blit(price, (rect.right - 230, rect.top + 6))
     stock_txt = "售罄" if sold else f"库存 {PLAYER_STOCK[item['id']]}"
     stock = menu_font.render(stock_txt, True, TEXT_WARN if sold else GRAY_TXT)
-    screen.blit(stock, stock.get_rect(right=rect.right - 26, top=rect.top + 8))
+    screen.blit(stock, stock.get_rect(right=rect.right - 26, top=rect.top + 6))
     desc = f"{item['desc']}    已购 {PLAYER_ITEMS.get(item['id'], 0)}"
-    screen.blit(menu_font.render(desc, True, GRAY_TXT), (x0, rect.top + 42))
+    screen.blit(menu_font.render(desc, True, GRAY_TXT), (x0, rect.top + 36))
     if sold:
         draw_sold_veil(screen, rect)
 
 
 def shop_turn(shop_sel):
-    """商城一帧事件：返回 (退出, 返回菜单, 选中项)"""
+    """商城一帧事件：返回 (退出, 返回菜单, 选中项)；选中范围 0-5"""
     back = False
     for e in pygame.event.get():
         if e.type == pygame.QUIT:
             return True, False, shop_sel
         if e.type == pygame.MOUSEBUTTONDOWN and e.button == 1:
-            shop_sel = shop_click(e.pos, shop_sel)
+            idx, _ = shop_hit(e.pos)
+            if idx is not None:
+                if idx == shop_sel:
+                    set_shop_msg(shop_purchase(idx))
+                else:
+                    shop_sel = idx
         elif e.type == pygame.KEYDOWN:
             if e.key == pygame.K_ESCAPE:
                 back = True
             elif e.key in (pygame.K_UP, pygame.K_w):
-                shop_sel = (shop_sel - 1) % len(SHOP_ITEMS)
+                shop_sel = (shop_sel - 1) % SHOP_TOTAL
             elif e.key in (pygame.K_DOWN, pygame.K_s):
-                shop_sel = (shop_sel + 1) % len(SHOP_ITEMS)
+                shop_sel = (shop_sel + 1) % SHOP_TOTAL
+            elif e.key in (pygame.K_LEFT, pygame.K_a):
+                shop_sel = (shop_sel - 1) % SHOP_TOTAL
+            elif e.key in (pygame.K_RIGHT, pygame.K_d):
+                shop_sel = (shop_sel + 1) % SHOP_TOTAL
             elif e.key in (pygame.K_RETURN, pygame.K_KP_ENTER):
-                set_shop_msg(try_purchase(shop_sel))
+                set_shop_msg(shop_purchase(shop_sel))
             else:
-                nums = {pygame.K_1: 0, pygame.K_2: 1, pygame.K_3: 2,
-                        pygame.K_KP1: 0, pygame.K_KP2: 1, pygame.K_KP3: 2}
+                nums = {getattr(pygame, f"K_{n}", None): n - 1 for n in range(1, 7)}
+                nums.update({pygame.K_KP1: 0, pygame.K_KP2: 1, pygame.K_KP3: 2,
+                             pygame.K_KP4: 3, pygame.K_KP5: 4, pygame.K_KP6: 5})
                 if e.key in nums:
                     shop_sel = nums[e.key]
     return False, back, shop_sel
-
-
-def shop_click(pos, shop_sel):
-    """鼠标点行：未选中则选中，已选中则二次点击确认购买"""
-    for i, rect in enumerate(shop_rows()):
-        if rect.collidepoint(pos):
-            if i == shop_sel:
-                set_shop_msg(try_purchase(i))
-            else:
-                shop_sel = i
-    return shop_sel
 
 
 def _menu_click(state, pos):
@@ -50985,6 +51094,18 @@ SHOP_ITEMS = (
      "price": 10, "stock": 3},
 )
 
+# 主动技能表（参考 skills.config.js）：金币解锁永久，F 键释放，独立冷却
+SKILLS = (
+    {"id": "dash", "name": "闪现冲锋", "cd": 5.0, "price": 120,
+     "desc": "朝移动方向瞬移两格（冷却 5 秒）"},
+    {"id": "nova", "name": "冲击波", "cd": 8.0, "price": 200,
+     "desc": "环形冲击波：重创并击退周围敌人（冷却 8 秒）"},
+    {"id": "barrage", "name": "弹幕风暴", "cd": 10.0, "price": 300,
+     "desc": "朝炮塔方向扇形倾泻七连弹（冷却 10 秒）"},
+)
+PLAYER_SKILLS = {}        # 已解锁技能 {id: {"cd": 剩余秒}}，开局清冷却
+SHOP_TOTAL = len(SKILLS) + len(SHOP_ITEMS)   # 商城可选总数：前 3 技能卡 + 后 3 补给行
+
 
 class Wallet:
     """支付接口：商城只经此扣款入账，余额不足一律拒付"""
@@ -51045,12 +51166,17 @@ def load_profile():
     owned = data.get("owned", {})
     PLAYER_ITEMS = {k: int(v) for k, v in owned.items() if int(v) > 0}
     ORDER_LOG = list(data.get("orders", []))[-50:]
+    for sid in data.get("skills", []):     # 技能解锁持久化：脏数据静默跳过
+        if any(cfg["id"] == sid for cfg in SKILLS):
+            PLAYER_SKILLS[sid] = {"cd": 0.0}
+    LOG.info("技能装备: %s", list(PLAYER_SKILLS) or "(无)")
 
 
 def save_profile():
-    """落盘：金币/库存/背包/订单一并持久化，写失败仅告警"""
+    """落盘：金币/库存/背包/订单/技能一并持久化，写失败仅告警"""
     payload = {"coins": WALLET.coins, "stock": PLAYER_STOCK,
-               "owned": PLAYER_ITEMS, "orders": ORDER_LOG[-50:]}
+               "owned": PLAYER_ITEMS, "orders": ORDER_LOG[-50:],
+               "skills": list(PLAYER_SKILLS)}
     storage = _web_storage()
     if storage is not None:             # 网页版：localStorage 落档
         try:
@@ -51100,7 +51226,98 @@ def set_shop_msg(text):
     _SHOP_FLASH.update(ts=now, ok=text.startswith("购买成功"))
 
 
-def apply_purchased_gear(player, level):
+def buy_skill(idx):
+    """技能购买：扣款解锁入档，立即可用（响应『买了用不出』的核心诉求）"""
+    cfg = SKILLS[idx]
+    if cfg["id"] in PLAYER_SKILLS:
+        return "该技能已解锁，无需重复购买"
+    if not WALLET.can_afford(cfg["price"]):
+        return f"金币不足（还差 {cfg['price'] - WALLET.coins} 枚）"
+    if not WALLET.pay(cfg["price"]):
+        return "支付失败，请重试"
+    PLAYER_SKILLS[cfg["id"]] = {"cd": 0.0}
+    record_order({"id": cfg["id"], "name": cfg["name"], "price": cfg["price"]})
+    save_profile()
+    LOG.info("技能解锁: %s -%d 币 (余 %d)", cfg["name"], cfg["price"], WALLET.coins)
+    return f"购买成功：{cfg['name']}已解锁，对局中按 F 释放"
+
+
+def skill_dash(player, grid, ais, fx):
+    """闪现冲锋：沿车头方向尝试两格瞬移，撞墙/有坦克逐格回退；返回是否成功"""
+    dc, dr = player.dir
+    for dist in (2, 1):
+        nc, nr = player.gc + dc * dist, player.gr + dr * dist
+        occupied = any(a.alive and (a.gc, a.gr) == (nc, nr) for a in ais)
+        if in_bounds(nc, nr) and grid[nr][nc] == EMPTY and not occupied:
+            player.teleport_to(nc, nr)
+            EXPLOSIONS.append(Explosion(*player.center()))
+            return True
+    return False                         # 前方全堵：白按不进冷却
+
+
+def skill_nova(player, grid, ais, fx):
+    """冲击波：半径 3 格内敌人受重伤并被推开（击退走 try_move 防嵌墙）"""
+    cx, cy = player.center()
+    for a in ais:
+        if not a.alive:
+            continue
+        ax, ay = a.center()
+        if math.hypot(ax - cx, ay - cy) <= CELL * 3:
+            apply_damage(a, 100, fx)
+            if a.alive:                  # 幸存者击退一格（远离玩家方向）
+                dc = 1 if ax > cx else -1 if ax < cx else 0
+                dr = 1 if ay > cy else -1 if ay < cy else 0
+                a.try_move(dc or (1 if ay == cy else 0), dr, grid, ())
+    EXPLOSIONS.append(Explosion(cx, cy))
+    fx.flash = 0.2
+    play_sound("nuke")
+
+
+def skill_barrage(player, grid, ais, fx):
+    """弹幕风暴：炮塔向 ±45° 扇形七连发（绕过单弹限制，弹丸走常规管线）"""
+    cx, cy = player.center()
+    base = player.turret * 45
+    for k in (-3, -2, -1, 0, 1, 2, 3):
+        rad = math.radians(base + k * 15)
+        BULLETS.append(Bullet(player, cx + math.cos(rad) * 22,
+                              cy + math.sin(rad) * 22,
+                              (math.cos(rad), math.sin(rad))))
+    play_sound("shoot")
+
+
+def set_skill_deny():
+    """技能无法释放的提示：不入冷却，仅记一次时刻供 HUD 闪红"""
+    _SKILL_DENY.update(ts=pygame.time.get_ticks())
+
+
+_SKILL_DENY = {"ts": -1e9}
+
+
+def cast_skill(player, grid, ais, fx):
+    """F 键入口：按解锁顺序释放第一个冷却完毕的技能（参考 SkillManager.cast）"""
+    if not player.alive:
+        return
+    for cfg in SKILLS:
+        st = PLAYER_SKILLS.get(cfg["id"])
+        if not st or st["cd"] > 0:
+            continue
+        ok = {"dash": skill_dash, "nova": skill_nova,
+              "barrage": skill_barrage}[cfg["id"]](player, grid, ais, fx)
+        if ok is False:                  # 执行器明确失败（如闪现撞墙）：不进冷却
+            break
+        st["cd"] = cfg["cd"]
+        LOG.info("技能释放: %s", cfg["name"])
+        return
+    set_skill_deny()
+
+
+def tick_skill_cooldowns(dt):
+    """技能冷却推进：每帧递减，归零即就绪"""
+    for st in PLAYER_SKILLS.values():
+        st["cd"] = max(0.0, st["cd"] - dt)
+
+
+def apply_purchased_gear(player, level, fx=None):
     """商城补给生效：仅无尽模式开放，普通模式一律短路不消耗"""
     if level <= 0:
         return                           # 商城增益只属于无尽模式
@@ -51120,6 +51337,8 @@ def apply_purchased_gear(player, level):
     if spent:
         save_profile()
         LOG.info("商城补给生效(无尽): %s", " ".join(spent))
+        if fx is not None:               # 生效可视化：开局顶部横幅 3 秒
+            fx.gear_toast = ("补给生效：" + " ".join(spent), 3.0)
 
 
 def exchange_coins(score):
@@ -51155,13 +51374,13 @@ def endless_result(player, ais, fx):
 
 
 def start_mode(action):
-    """主菜单选择分发：0=无尽 1=普通 2=商城 3=操作说明"""
+    """主菜单选择分发：0=普通 1=无尽 2=商城 3=操作说明（与 MENU_BUTTONS 同序）"""
     if action == 0:
-        LOG.info("菜单: 进入无尽模式")
-        return "ENDLESS"
-    if action == 1:
         LOG.info("菜单: 进入普通模式")
         return "PLAY"
+    if action == 1:
+        LOG.info("菜单: 进入无尽模式")
+        return "ENDLESS"
     if action == 2:
         LOG.info("菜单: 进入军械商城")
         return "SHOP"
@@ -51216,6 +51435,7 @@ def update_world(dt, grid, player, ais, fx, inputs):
     GAME_TIME += dt
     all_tanks = [player] + ais
     update_player(player, dt, inputs, grid)
+    tick_skill_cooldowns(dt)            # 技能冷却推进：每帧递减
     update_ais(dt, grid, player, ais, all_tanks)
     update_nuke(dt, fx)
     for t in all_tanks:
@@ -51226,6 +51446,8 @@ def update_world(dt, grid, player, ais, fx, inputs):
     BULLETS[:] = [b for b in BULLETS if update_bullet(b, dt, grid, all_tanks, fx)]
     update_explosions(dt)
     fx.flash = max(0, fx.flash - dt)
+    if fx.gear_toast[1] > 0:            # 补给横幅倒计时：与技能冷却同帧推进
+        fx.gear_toast = (fx.gear_toast[0], max(0.0, fx.gear_toast[1] - dt))
 
 
 def update_ais(dt, grid, player, ais, all_tanks):
@@ -51340,13 +51562,13 @@ def update_finale(dt, player, ais, fx, state):
 
 
 def handle_events(state, inputs):
-    """返回 (退出, 开火, 重开, 炮塔旋转±1, Shift, 回菜单, 鼠标点击)；维护方向键按下序"""
-    fire = restart = nuke = menu_back = False
+    """返回 (退出, 开火, 重开, 炮塔旋转±1, Shift, 回菜单, 鼠标点击, 技能)；维护方向键按下序"""
+    fire = restart = nuke = menu_back = skill = False
     click, turn = None, 0
     in_game = state in ("PLAY", "ENDLESS")
     for e in pygame.event.get():
         if e.type == pygame.QUIT:
-            return True, False, False, 0, False, False, None
+            return True, False, False, 0, False, False, None, False
         if e.type == pygame.WINDOWFOCUSLOST:
             inputs.clear()                  # 失焦清键：防止方向卡死
             continue
@@ -51357,9 +51579,11 @@ def handle_events(state, inputs):
                 if state in ("ENDLESS", "CLEAR", "ELOSE"):
                     menu_back = True        # 无尽三态：ESC 退回主菜单而非退出程序
                 else:
-                    return True, False, False, 0, False, False, None
+                    return True, False, False, 0, False, False, None, False
             elif e.key == pygame.K_SPACE and in_game:
                 fire = True
+            elif e.key == pygame.K_f and in_game:
+                skill = True                # 技能释放键（空格保留开火）
             elif e.key == pygame.K_r and state in ("WIN", "LOSE", "CLEAR"):
                 restart = True             # CLEAR=无尽下一关；核弹结局禁 R 不变
             elif e.key in (pygame.K_LSHIFT, pygame.K_RSHIFT) and in_game:
@@ -51370,7 +51594,7 @@ def handle_events(state, inputs):
             inputs.press(e.key)
         elif e.type == pygame.KEYUP:
             inputs.release(e.key)
-    return False, fire, restart, turn, nuke, menu_back, click
+    return False, fire, restart, turn, nuke, menu_back, click, skill
 
 
 def setup_logging():
@@ -51431,15 +51655,17 @@ def init_round(level=0, score=0, use_items=True):
     elite = level > 0
     if elite:
         player.lives = 1            # 无尽规则：孤命闯关，阵亡即终局
+    fx = Effects("endless" if level > 0 else "normal", level, score)
+    for st in PLAYER_SKILLS.values():
+        st["cd"] = 0.0              # 每局开打：技能冷却全部清零
     if use_items:
-        apply_purchased_gear(player, level)
+        apply_purchased_gear(player, level, fx)
     ais = [AITank(*pos, elite) for pos in AI_SPAWNS]
     BULLETS.clear()
     EXPLOSIONS.clear()
     NUKE_QUEUE.clear()
     INTEL.reset()
-    mode = "endless" if level > 0 else "normal"
-    return grid, player, ais, Effects(mode, level, score)
+    return grid, player, ais, fx
 
 
 async def main():
@@ -51478,7 +51704,8 @@ async def main():
             draw_menu_frame(screen, state, title_font, menu_font, menu_sel,
                             pygame.mouse.get_pos())
             continue
-        quit_game, fire, restart, turn, nuke, menu_back, _ = handle_events(state, inputs)
+        quit_game, fire, restart, turn, nuke, menu_back, _, skill = \
+            handle_events(state, inputs)
         if quit_game:
             pygame.quit()
             return
@@ -51497,6 +51724,8 @@ async def main():
             continue
         if fire:
             player.try_fire()
+        if skill:
+            cast_skill(player, grid, ais, fx)
         if turn:
             player.rotate_turret(turn)
         if nuke and not fx.nuke_used:
