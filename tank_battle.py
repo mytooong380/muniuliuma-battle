@@ -50593,7 +50593,7 @@ def render(screen, bg, grid, player, ais, fx, font, big_font, win_font,
     elif state == "WIN_NUKE":
         draw_nuke_finale(screen, win_font, menu_font)
     elif state == "LOSE":
-        center_text(screen, big_font, "五丈原归天……", (230, 60, 60), 340)
+        center_text(screen, big_font, "Game Over!", (230, 60, 60), 340)
         draw_finale_divider(screen, 386)
     elif state == "CLEAR":
         center_text(screen, big_font, f"第 {fx.level} 关 完成！", GOLD, 340)
