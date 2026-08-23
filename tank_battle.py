@@ -50469,25 +50469,25 @@ def draw_skill_bar(screen, font):
         x = cx + i * 92
         ready = st["cd"] <= 0
         deny = pygame.time.get_ticks() - _SKILL_DENY["ts"] < 200
-        color = ACCENT if ready else (226, 90, 80) if deny else GRAY_TXT
-        pygame.draw.circle(screen, (26, 32, 48), (x, y), 27)
+        color = GOLD if ready else TEXT_WARN if deny else GRAY_TXT
+        pygame.draw.circle(screen, (24, 28, 19), (x, y), 27)
         pygame.draw.circle(screen, color, (x, y), 27, 2)
         if not ready:                      # 冷却弧线：剩余比例的顺时针进度环
             frac = st["cd"] / cfg["cd"]
-            pygame.draw.arc(screen, (226, 90, 80), (x - 24, y - 24, 48, 48),
+            pygame.draw.arc(screen, TEXT_WARN, (x - 24, y - 24, 48, 48),
                             -math.pi / 2, -math.pi / 2 + math.pi * 2 * frac, 4)
         icon = ui_font(22).render(cfg["name"][0], True,
                                   TEXT_MAIN if ready else GRAY_TXT)
         screen.blit(icon, icon.get_rect(center=(x, y - 2)))
         cd_txt = "就绪" if ready else f"{st['cd']:.0f}s"
-        tip = ui_font(13).render(cd_txt, True, ACCENT if ready else GRAY_TXT)
+        tip = ui_font(13).render(cd_txt, True, GOLD if ready else GRAY_TXT)
         screen.blit(tip, tip.get_rect(center=(x, y + 40)))
 
 
 def draw_hud(screen, font, player, ais, fx):
     # 左上角：题目指定文案的操作说明 + YXF 身份标识（加分项3）+ 炮塔旋转提示
     draw_panel(screen, "操作说明：方向键移动，空格发射", font, 6)
-    screen.blit(font.render("YXF", True, ACCENT), (8, 30))
+    screen.blit(font.render("YXF", True, (255, 210, 60)), (8, 30))
     draw_panel(screen, "Q/E 旋转炮塔（8 向）· F 技能", font, 52)
     nuke_state = "已用" if fx.nuke_used else "待命"
     draw_panel(screen, f"Shift×2 核弹 [{nuke_state}]", font, 74)
@@ -50533,9 +50533,9 @@ def draw_nuke_finale(screen, win_font, font):
                 panel.top + 76)
     pygame.draw.line(screen, (160, 110, 50), (panel.left + 70, panel.top + 126),
                      (panel.right - 70, panel.top + 126), 2)
-    center_text(screen, font, "战术核弹的余波散尽，战场归于死寂", TEXT_MAIN,
+    center_text(screen, font, "战术核弹的余波散尽，战场归于死寂", (222, 202, 172),
                 panel.top + 168)
-    center_text(screen, font, "本局禁止 R 重开（重启程序可再战）", TEXT_WARN,
+    center_text(screen, font, "本局禁止 R 重开（重启程序可再战）", (255, 160, 120),
                 panel.top + 212)
 
 
@@ -50586,14 +50586,14 @@ def render(screen, bg, grid, player, ais, fx, font, big_font, win_font,
     if state in ("WIN", "LOSE", "CLEAR", "ELOSE"):
         draw_result_veil(screen)
     if state == "WIN":
-        center_text(screen, big_font, "旗开得胜！", TEXT_SUCCESS, 340)
+        center_text(screen, big_font, "旗开得胜！", GOLD, 340)
         draw_finale_divider(screen, 386)
         center_text(screen, menu_font, "真是一场酣畅淋漓的战斗啊",
                     TEXT_MAIN, 424)
     elif state == "WIN_NUKE":
         draw_nuke_finale(screen, win_font, menu_font)
     elif state == "LOSE":
-        center_text(screen, big_font, "五丈原归天……", TEXT_WARN, 340)
+        center_text(screen, big_font, "五丈原归天……", (230, 60, 60), 340)
         draw_finale_divider(screen, 386)
     elif state == "CLEAR":
         center_text(screen, big_font, f"第 {fx.level} 关 完成！", GOLD, 340)
@@ -50605,7 +50605,7 @@ def render(screen, bg, grid, player, ais, fx, font, big_font, win_font,
                         f"核弹惩罚 -{NUKE_PENALTY} · 当前积分 {fx.score}",
                         TEXT_WARN, 462)
     elif state == "ELOSE":
-        center_text(screen, win_font, f"无尽模式 · 止步第 {fx.level} 关", TEXT_WARN, 340)
+        center_text(screen, win_font, f"无尽模式 · 止步第 {fx.level} 关", (230, 60, 60), 340)
         draw_finale_divider(screen, 386)
         center_text(screen, menu_font, "《关羽之歌》已为您奏响    ESC - 返回主菜单",
                     TEXT_MAIN, 424)
@@ -50620,25 +50620,21 @@ def render(screen, bg, grid, player, ais, fx, font, big_font, win_font,
 
 
 # ---------------- 主菜单与操作说明 ----------------
-# 参考配色（坦克大战 新）：深蓝底 + 蓝紫渐变 + 玻璃拟态
+# 军绿战术色板：橄榄深底 + 卡其军黄 + 暗棕硬影（迷彩军械风）
 # 对比度经 WCAG 公式验证全部 ≥4.5:1，禁止肉眼调色后不再复算
-BG_DARK = (13, 16, 23)           # #0d1017 深海军蓝主底
-BG_PANEL = (16, 20, 30)          # rgba(16,20,30,.88) 玻璃面板底
-ACCENT = (126, 161, 255)         # #7ea1ff 渐变蓝端
-ACCENT2 = (180, 140, 242)        # #b48cf2 渐变紫端
-GOLD = (246, 201, 69)            # #f6c945 金色数字/价格
-GOLD_DIM = (180, 150, 60)        # 暗金：分割线
-RED_ACCENT = (30, 34, 48)        # 标题硬阴影（深蓝调）
-GRAY_TXT = (139, 149, 173)       # #8b95ad 次文字
-TEXT_MAIN = (232, 236, 244)      # #e8ecf4 主文字
-TEXT_WARN = (224, 106, 90)       # #e06a5a 警示/售罄/失败
-TEXT_SUCCESS = (111, 227, 165)   # #6fe3a5 购买成功/胜利
-BORDER_BASE = (70, 80, 110)      # rgba(120,140,200,.35) 加深描边
-BTN_BLUE = (61, 90, 254)         # #3d5afe 按钮渐变蓝端
-BTN_PURPLE = (124, 77, 255)      # #7c4dff 按钮渐变紫端
-WOOD_DARK = (86, 64, 38)         # 深木色：木纹/牛角/木轮（游戏实体沿用）
-OX_BROWN = (150, 112, 62)        # 原木色：牛头/装饰（游戏实体沿用）
-MENU_BUTTONS = ("普通模式", "无尽模式", "军械商城", "操作说明")
+BG_DARK = (18, 22, 15)           # 主底：橄榄深
+BG_PANEL = (24, 30, 20)          # 面板底板
+GOLD = (232, 204, 112)           # 主金 7.1:1（原 214,187,98 提亮）
+GOLD_DIM = (180, 152, 78)        # 暗金：边框/分割线
+RED_ACCENT = (82, 66, 38)        # 复古硬阴影
+GRAY_TXT = (168, 176, 148)       # 副文字 5.8:1（原 136,142,122 提亮）
+TEXT_MAIN = (226, 232, 214)      # 主文字 8.3:1
+TEXT_WARN = (236, 110, 84)       # 警示/售罄/失败
+TEXT_SUCCESS = (146, 210, 94)    # 购买成功
+BORDER_BASE = (62, 70, 54)       # 通用描边
+WOOD_DARK = (86, 64, 38)         # 深木色：木纹/牛角/木轮
+OX_BROWN = (150, 112, 62)        # 原木色：牛头/装饰
+MENU_BUTTONS = ("无尽模式", "普通模式", "军械商城", "操作说明")
 
 _MENU_ANIM = {"sel": -1, "ts": 0}     # 菜单切换动画：选中项索引与切换时刻
 _SHOP_FLASH = {"ts": 0, "ok": False}  # 商城购买成功绿闪：100ms 即逝
@@ -50677,9 +50673,9 @@ HELP_LINES = (
 
 
 def menu_layout():
-    """四按钮几何（参考 .btn 340 宽）：纵向等距居中"""
-    w, h = 340, 52
-    return [pygame.Rect(SCREEN_W // 2 - w // 2, 300 + i * 66, w, h)
+    """四按钮几何：大点击区（可访问性），纵向等距居中"""
+    w, h = 340, 56
+    return [pygame.Rect(SCREEN_W // 2 - w // 2, 300 + i * 74, w, h)
             for i in range(len(MENU_BUTTONS))]
 
 
@@ -50694,57 +50690,6 @@ def retro_text(screen, font, text, color, shadow, center, offset=4):
     screen.blit(main, main.get_rect(center=center))
 
 
-def gradient_text(font, text, c1, c2):
-    """横向渐变字（参考 .title 135° 渐变的 pygame 近似）：mask 逐列混色"""
-    base = font.render(text, True, (255, 255, 255))
-    grad = pygame.Surface(base.get_size(), pygame.SRCALPHA)
-    w = max(1, base.get_width() - 1)
-    for x in range(base.get_width()):
-        t = x / w
-        col = tuple(int(a + (b - a) * t) for a, b in zip(c1, c2))
-        pygame.draw.line(grad, col, (x, 0), (x, base.get_height()))
-    grad.blit(base, (0, 0), special_flags=pygame.BLEND_MULT)
-    return grad
-
-
-def rounded_gradient(size, c1, c2, radius):
-    """垂直渐变圆角面（参考 .btn 135° 渐变）：mask 裁圆角"""
-    w, h = size
-    s = pygame.Surface((w, h), pygame.SRCALPHA)
-    for y in range(h):
-        t = y / max(1, h - 1)
-        col = tuple(int(a + (b - a) * t) for a, b in zip(c1, c2))
-        pygame.draw.line(s, col, (0, y), (w, y))
-    mask = pygame.Surface((w, h), pygame.SRCALPHA)
-    pygame.draw.rect(mask, (255, 255, 255, 255), mask.get_rect(),
-                     border_radius=radius)
-    s.blit(mask, (0, 0), special_flags=pygame.BLEND_RGBA_MIN)
-    return s
-
-
-def draw_glass_panel(screen, rect, radius=16):
-    """玻璃拟态面板（参考 .panel）：半透明深底 + 细亮边"""
-    s = pygame.Surface(rect.size, pygame.SRCALPHA)
-    s.fill((16, 20, 30, 224))
-    pygame.draw.rect(s, (120, 140, 200, 90), s.get_rect(), 1,
-                     border_radius=radius)
-    screen.blit(s, rect.topleft)
-
-
-def draw_grad_button(screen, rect, label, font, active):
-    """渐变大按钮（参考 .btn）：蓝紫渐变 + 悬停浮起 + 按下感"""
-    off = 3 if active and pygame.time.get_ticks() - _MENU_ANIM["ts"] < 120 else 0
-    r = rect.move(0, -2 if active else 0)   # 悬停上浮 2px（参考 translateY）
-    glow = pygame.Surface((r.w + 12, r.h + 12), pygame.SRCALPHA)
-    pygame.draw.rect(glow, (80, 100, 255, 70), glow.get_rect(),
-                     border_radius=16)
-    screen.blit(glow, (r.x - 6, r.y - 6 + off))
-    screen.blit(rounded_gradient(r.size, BTN_BLUE, BTN_PURPLE, 12),
-                (r.x, r.y + off))
-    text = font.render(label, True, (255, 255, 255))
-    screen.blit(text, text.get_rect(center=r.center).move(0, off))
-
-
 def draw_scanlines(screen):
     """CRT 扫描线：4px 周期横纹叠加复古质感"""
     global _SCANLINES
@@ -50756,11 +50701,11 @@ def draw_scanlines(screen):
 
 
 def draw_menu_grid(screen):
-    """低调网格底纹（深蓝调）：给纯色背景加纵深，不抢主体"""
+    """低调网格底纹：给纯色背景加纵深，不抢主体"""
     for x in range(0, SCREEN_W + 1, 64):
-        pygame.draw.line(screen, (20, 25, 36), (x, 0), (x, SCREEN_H))
+        pygame.draw.line(screen, (26, 32, 21), (x, 0), (x, SCREEN_H))
     for y in range(0, SCREEN_H + 1, 64):
-        pygame.draw.line(screen, (20, 25, 36), (0, y), (SCREEN_W, y))
+        pygame.draw.line(screen, (26, 32, 21), (0, y), (SCREEN_W, y))
 
 
 def draw_cursor(screen, x, y, color):
@@ -50789,34 +50734,70 @@ def draw_coin_counter(screen, font, y):
     screen.blit(surf, (cx + 16, y - surf.get_height() // 2))
 
 
+def draw_ox_icon(screen, x, y, body_color, horns, size=32):
+    """迷你木牛流马：菜单装饰用（木箱+牛头角+双轮）"""
+    b = size * 5 // 8
+    pygame.draw.rect(screen, WOOD_DARK, (x + 1, y + size - 6, 6, 5), border_radius=2)
+    pygame.draw.rect(screen, WOOD_DARK, (x + size - 7, y + size - 6, 6, 5),
+                     border_radius=2)
+    pygame.draw.rect(screen, body_color, (x + 4, y + size // 3, size - 8, b),
+                     border_radius=3)
+    hw = size // 4
+    pygame.draw.rect(screen, OX_BROWN, (x + size // 2 - hw // 2, y + 3, hw, size // 3),
+                     border_radius=2)
+    pygame.draw.polygon(screen, horns,
+                        [(x + size // 2 - hw, y + 8), (x + 2, y), (x + size // 2 - hw // 2, y + 4)])
+    pygame.draw.polygon(screen, horns,
+                        [(x + size // 2 + hw, y + 8), (x + size - 2, y), (x + size // 2 + hw // 2, y + 4)])
+
+
+def draw_menu_tanks(screen, font, y):
+    """底部对阵装饰：军绿木牛 VS 联军木马群，点明玩法"""
+    draw_ox_icon(screen, 296, y, (104, 130, 58), WOOD_DARK)
+    vs = font.render("VS", True, GOLD)
+    screen.blit(vs, vs.get_rect(center=(400, y + 12)))
+    for i in range(3):
+        draw_ox_icon(screen, 462 + i * 44, y, (158, 96, 62), (120, 40, 32))
+
+
 def draw_menu_item(screen, font, label, rect, active, idx):
-    """菜单按钮（参考 .btn）：渐变底 + 悬停上浮；切换瞬间 120ms 弹跳"""
+    """菜单项三级激活态：金色+大字号+光条；切换瞬间 120ms 微弹跳"""
     if active and _MENU_ANIM["sel"] != idx:
         _MENU_ANIM.update(sel=idx, ts=pygame.time.get_ticks())
-    draw_grad_button(screen, rect, label, font, active)
+    text = ui_font(30).render(label, True, GOLD) if active else \
+        font.render(label, True, TEXT_MAIN)
+    tr = text.get_rect(center=rect.center)
+    if active:
+        box = tr.inflate(44, 12)
+        glow = pygame.Surface(box.size, pygame.SRCALPHA)
+        pygame.draw.rect(glow, (*GOLD_DIM, 42), glow.get_rect(), border_radius=6)
+        screen.blit(glow, box.topleft)
+        if pygame.time.get_ticks() - _MENU_ANIM["ts"] < 120:
+            tr = tr.move(1, -1)             # 弹跳：切换后的前几帧位移 1px
+    screen.blit(text, tr)
+    if active and int(pygame.time.get_ticks() / 280) % 2 == 0:
+        draw_cursor(screen, rect.left + 74, rect.centery, GOLD)
 
 
 def draw_menu(screen, title_font, menu_font, menu_sel, mouse):
-    """主菜单（参考 menu.js）：渐变标题→状态行→渐变按钮→键位提示"""
+    """主菜单：三级激活选项 + 新手引导行 + 网格扫描线质感"""
     screen.fill(BG_DARK)
     draw_menu_grid(screen)
-    title = gradient_text(title_font, "木牛流马大战", ACCENT, ACCENT2)
-    screen.blit(title, title.get_rect(center=(SCREEN_W // 2, 148)))
+    retro_text(screen, title_font, "木牛流马大战", GOLD, RED_ACCENT,
+               (SCREEN_W // 2, 172), 5)
     sub = menu_font.render("WOODEN OX BATTLE · 迷宫围剿 · YXF 原创", True, GRAY_TXT)
-    screen.blit(sub, sub.get_rect(center=(SCREEN_W // 2, 214)))
-    skills_n = len(PLAYER_SKILLS)
-    stat = f"金币 {WALLET.coins}          技能 {skills_n}/{len(SKILLS)}          补给 {sum(PLAYER_ITEMS.values())}"
-    stat_surf = menu_font.render(stat, True, TEXT_MAIN)
-    screen.blit(stat_surf, stat_surf.get_rect(center=(SCREEN_W // 2, 258)))
+    screen.blit(sub, sub.get_rect(center=(SCREEN_W // 2, 236)))
+    pygame.draw.line(screen, BORDER_BASE, (220, 272), (580, 272), 1)
     for i, (rect, label) in enumerate(zip(menu_layout(), MENU_BUTTONS)):
         active = rect.collidepoint(mouse) or i == menu_sel
-        draw_menu_item(screen, ui_font(22), label, rect, active, i)
-    center_text(screen, ui_font(20),
-                "↑↓ / W S 选择 · Enter 确认 · 数字键 1-4 · 鼠标点击",
-                GRAY_TXT, 604)
-    center_text(screen, ui_font(18),
-                "普通模式闯关 · 无尽模式赚金币 · 商城解锁技能（F 键释放）",
-                GRAY_TXT, 636)
+        draw_menu_item(screen, menu_font, f"{i + 1}. {label}", rect, active, i)
+    draw_coin_counter(screen, menu_font, 604)
+    center_text(screen, menu_font, "↑↓ / W S 选择 · Enter 确认 · 数字键 1-4 · 鼠标点击",
+                GRAY_TXT, 644)
+    center_text(screen, ui_font(22),
+                "无尽模式赚金币 · 普通模式闯关 · 商城解锁技能（F 键释放）",
+                GRAY_TXT, 668)
+    draw_menu_tanks(screen, menu_font, 692)
     draw_scanlines(screen)
 
 
@@ -50879,17 +50860,16 @@ def shop_hit(pos):
 
 
 def draw_skill_card(screen, cfg, rect, active):
-    """技能卡（参考 .form-card）：圆形图标 + 名称 + 描述 + 价格/已解锁"""
+    """技能卡：圆形图标 + 名称 + 描述 + 价格/已解锁（军械库货架风）"""
     owned = cfg["id"] in PLAYER_SKILLS
-    card = pygame.Surface(rect.size, pygame.SRCALPHA)
-    card.fill((255, 255, 255, 13 if active else 8))
-    screen.blit(card, rect.topleft)
-    border = ACCENT if active and not owned else \
+    pygame.draw.rect(screen, (34, 40, 26) if active else (24, 28, 19),
+                     rect, border_radius=14)
+    border = GOLD_DIM if active and not owned else \
         TEXT_SUCCESS if owned else BORDER_BASE
     pygame.draw.rect(screen, border, rect, 2, border_radius=14)
     cx = rect.centerx
-    pygame.draw.circle(screen, (26, 32, 48), (cx, rect.top + 38), 24)
-    pygame.draw.circle(screen, ACCENT if not owned else TEXT_SUCCESS,
+    pygame.draw.circle(screen, (24, 28, 19), (cx, rect.top + 38), 24)
+    pygame.draw.circle(screen, GOLD if not owned else TEXT_SUCCESS,
                        (cx, rect.top + 38), 24, 2)
     icon = ui_font(24).render(cfg["name"][0], True, TEXT_MAIN)
     screen.blit(icon, icon.get_rect(center=(cx, rect.top + 38)))
@@ -50906,11 +50886,11 @@ def draw_skill_card(screen, cfg, rect, active):
 
 
 def draw_shop(screen, title_font, menu_font, sel, mouse):
-    """商城（参考 menu.js）：渐变标题 → 技能卡区 → 补给区 → 订单/操作提示"""
+    """商城：金字红影标题 → 技能卡区 → 补给区 → 订单/操作提示"""
     screen.fill(BG_DARK)
     draw_menu_grid(screen)
-    title = gradient_text(title_font, "军械商城", ACCENT, ACCENT2)
-    screen.blit(title, title.get_rect(center=(SCREEN_W // 2, 76)))
+    retro_text(screen, title_font, "军械商城", GOLD, RED_ACCENT,
+               (SCREEN_W // 2, 76), 5)
     draw_coin_counter(screen, menu_font, 148)
     center_text(screen, ui_font(16), "主 动 技 能 · F 键 释 放 · 永 久 解 锁",
                 GRAY_TXT, 182)
@@ -50922,7 +50902,7 @@ def draw_shop(screen, title_font, menu_font, sel, mouse):
         draw_shop_row(screen, menu_font, item, rect,
                       active=rect.collidepoint(mouse) or i + len(SKILLS) == sel)
         if i + len(SKILLS) == sel:
-            draw_cursor(screen, rect.left + 8, rect.centery, ACCENT)
+            draw_cursor(screen, rect.left + 8, rect.centery, GOLD)
     msg, until = SHOP_MSG
     if msg and pygame.time.get_ticks() < until:
         ok = msg.startswith("购买成功")
@@ -50949,9 +50929,9 @@ def draw_shop(screen, title_font, menu_font, sel, mouse):
 def draw_shop_icon(screen, font, item, rect, active):
     """商品图标：48px 圆角块内单字，军械库货架感"""
     box = pygame.Rect(rect.left + 10, rect.top + 8, 48, 48)
-    pygame.draw.rect(screen, BG_PANEL if active else (20, 24, 34),
+    pygame.draw.rect(screen, BG_PANEL if active else (20, 24, 16),
                      box, border_radius=8)
-    pygame.draw.rect(screen, ACCENT if active else BORDER_BASE, box, 2,
+    pygame.draw.rect(screen, GOLD_DIM if active else BORDER_BASE, box, 2,
                      border_radius=8)
     ch = font.render(item["name"][0], True, GOLD if active else TEXT_MAIN)
     screen.blit(ch, ch.get_rect(center=box.center))
@@ -50970,9 +50950,9 @@ def draw_sold_veil(screen, rect):
 def draw_shop_row(screen, menu_font, item, rect, active):
     """单件商品行：图标 + 名称/价格/库存三列固定锚点（互不重叠）"""
     sold = PLAYER_STOCK.get(item["id"], 0) <= 0
-    pygame.draw.rect(screen, BG_PANEL if active else (20, 24, 34),
+    pygame.draw.rect(screen, BG_PANEL if active else (24, 28, 19),
                      rect, border_radius=10)
-    pygame.draw.rect(screen, ACCENT if active else BORDER_BASE, rect, 2,
+    pygame.draw.rect(screen, GOLD_DIM if active else BORDER_BASE, rect, 2,
                      border_radius=10)
     x0 = draw_shop_icon(screen, menu_font, item, rect, active)
     name_color = GRAY_TXT if sold else TEXT_MAIN
@@ -51374,13 +51354,13 @@ def endless_result(player, ais, fx):
 
 
 def start_mode(action):
-    """主菜单选择分发：0=普通 1=无尽 2=商城 3=操作说明（与 MENU_BUTTONS 同序）"""
+    """主菜单选择分发：0=无尽 1=普通 2=商城 3=操作说明（与 MENU_BUTTONS 同序）"""
     if action == 0:
-        LOG.info("菜单: 进入普通模式")
-        return "PLAY"
-    if action == 1:
         LOG.info("菜单: 进入无尽模式")
         return "ENDLESS"
+    if action == 1:
+        LOG.info("菜单: 进入普通模式")
+        return "PLAY"
     if action == 2:
         LOG.info("菜单: 进入军械商城")
         return "SHOP"
